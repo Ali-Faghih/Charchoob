@@ -11,6 +11,8 @@ from pathlib import Path
 
 import cv2
 
+import numpy as np
+
 import config
 from bodies import pair_faces_to_bodies
 from debug_pose import load_pose_model, detect_pose
@@ -33,12 +35,18 @@ RATIOS = [
 ]
 
 
-def build_subjects(pose_model, face_detector, image_path: Path):
-    """Detect + classify once. Returns (w, h, subjects, avoid)."""
-    image = cv2.imread(str(image_path))
+def build_subjects(pose_model, face_detector, image_src):
+    """Detect + classify once. Returns (w, h, subjects, avoid).
+
+    `image_src` is either a path (str/Path) or a decoded BGR numpy array.
+    """
+    if isinstance(image_src, np.ndarray):
+        image = image_src
+    else:
+        image = cv2.imread(str(image_src))
     h, w = image.shape[:2]
-    faces = face_detector.detect(str(image_path))
-    bodies = detect_pose(pose_model, str(image_path))
+    faces = face_detector.detect(image)
+    bodies = detect_pose(pose_model, image)
     pairs = pair_faces_to_bodies(faces, bodies, w, h)
     analysis = analyze_faces(
         faces, w, h, config.EDGE_TOLERANCE,

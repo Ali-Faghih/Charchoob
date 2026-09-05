@@ -6,6 +6,7 @@ Only what the current pipeline uses:
   - manual_crop_box(): locate the human crop `c (n).JPG` inside `a (n).JPG`
 """
 import cv2
+import numpy as np
 from ultralytics import YOLO
 
 import config
@@ -27,9 +28,10 @@ def load_pose_model():
     return YOLO(str(POSE_MODEL_PATH))
 
 
-def detect_pose(model, image_path: str):
+def detect_pose(model, image_path):
+    source = image_path if isinstance(image_path, np.ndarray) else str(image_path)
     result = model.predict(
-        str(image_path),
+        source,
         conf=config.BODY_CONFIDENCE,
         device=config.DEVICE,
         verbose=False,
@@ -37,7 +39,10 @@ def detect_pose(model, image_path: str):
     people = []
     if result.boxes is None:
         return people
-    image = cv2.imread(str(image_path))
+    if isinstance(image_path, np.ndarray):
+        image = image_path
+    else:
+        image = cv2.imread(str(image_path))
     image_h, image_w = image.shape[:2] if image is not None else (0, 0)
     tolerance = config.BODY_EDGE_TOLERANCE * min(image_w, image_h)
 

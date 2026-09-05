@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import cv2
+import numpy as np
 from ultralytics import YOLO
 
 
@@ -42,12 +43,12 @@ class FaceDetector:
 
         self.model = YOLO(str(self.model_path))
 
-    def detect(self, image_path: str) -> list[FaceDetection]:
+    def detect(self, image_path) -> list[FaceDetection]:
         """
         Detect all faces in an image.
 
         Args:
-            image_path: Path to input image.
+            image_path: Path to input image OR a decoded BGR numpy array.
 
         Returns:
             List of detected faces containing:
@@ -55,7 +56,10 @@ class FaceDetector:
             - confidence: detection confidence
         """
 
-        image = cv2.imread(image_path)
+        if isinstance(image_path, np.ndarray):
+            image = image_path
+        else:
+            image = cv2.imread(str(image_path))
 
         if image is None:
             raise ValueError(
