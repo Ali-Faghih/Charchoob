@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Data / generated artifacts
+input/
+output/
+models/
+
+# Logs
+*.log
+
+# Env vars
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
