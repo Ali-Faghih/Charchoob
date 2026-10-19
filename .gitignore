@@ -1,28 +1,31 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-
-# Virtual environments
-.venv/
-venv/
-
-# IDE
-.idea/
-.vscode/
-
-# Data / generated artifacts
-input/
-output/
-models/
-
-# Logs
+node_modules/
+dist/
+build/
+.cache/
+.env*
+.vite/
+vite.config.*.timestamp-*
+*.tsbuildinfo
+*-debug.log*
+logs/
 *.log
+.claude-replay.*
+.tmp-*
 
-# Env vars
-.env
-.env.*
+# Local-only: IDE state, bytecode, test artifacts, sample photos.
+.venv/
+.idea/
+# 255 MB of CLI-only test photos — drop a few JPGs here yourself
+input/
+# delivery extras: report figures, debug runs, old outputs
+اضافات/
+__pycache__/
+*.pyc
+output/
 
-# OS
-.DS_Store
-Thumbs.db
+# Platform-managed agentplat state, not project source. In the
+# client-initiated single-repo workspace layout (make's `Path: "."` spec) the
+# repo root IS the workspace root, so these land inside this repo rather than
+# beside it.
+/.plugins/
+/.opencode-skills/
