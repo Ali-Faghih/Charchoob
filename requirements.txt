@@ -1,4 +1,9 @@
 ultralytics==8.4.116
 opencv-python==5.0.0.93
 numpy==2.5.2
+pillow==12.3.0
+pillow-heif==1.8.0
 torch==2.13.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32
