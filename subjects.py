@@ -1,6 +1,7 @@
 from typing import TypedDict
 
 from face import FaceDetection
+from frames import person_box_for_face
 
 
 class FaceAnalysis(TypedDict):
@@ -90,52 +91,9 @@ def analyze_faces(
     return analysis
 
 
-def resolve_truncation(
-    analysis: list[FaceAnalysis],
-    min_survivors: int = 3,
-) -> list[FaceAnalysis]:
-    """
-    Decide which faces are truly forbidden (edge-cut).
-
-    A face whose own box touches the border is always forbidden. A face whose
-    body touches the border is forbidden too -- BUT only if enough subjects
-    survive the purge. If dropping all body-cut faces would leave fewer than
-    ``min_survivors``, we keep them instead, because a lone person merely
-    standing at the frame edge (with a fully visible body, e.g. image 11) is a
-    genuine subject and must not be dropped. This mirrors a human editor: a
-    small group is kept whole, a large group can shed edge stragglers.
-    """
-    face_cut = [f for f in analysis if f["truncated"]]
-    body_cut = [f for f in analysis if not f["truncated"] and f["body_truncated"]]
-
-    if not body_cut:
-        return analysis
-
-    n_survivors = len(analysis) - len(face_cut) - len(body_cut)
-    if n_survivors < min_survivors:
-        # keep body-cut faces so the scene does not collapse
-        for face in body_cut:
-            face["truncated"] = False
-    else:
-        for face in body_cut:
-            face["truncated"] = True
-
-    return analysis
-
-
-def _normalize(values: list[float]) -> list[float]:
-    if not values:
-        return []
-    low = min(values)
-    high = max(values)
-    if high - low < 1e-9:
-        return [1.0] * len(values)
-    return [(value - low) / (high - low) for value in values]
-
-
 def _max_normalize(values: list[float]) -> list[float]:
     """Normalize by the MAXIMUM, preserving each value's magnitude relative to
-    the largest -- unlike min-max (_normalize), which reduces to rank only.
+    the largest -- unlike min-max normalization, which reduces to rank only.
 
     Used for face SIZE: min-max made two different images (one with a 3x gap,
     one with a ~1.05x gap between faces) both score {1.0, 0.0}, wiping out the
@@ -187,57 +145,44 @@ def score_faces(
     return analysis
 
 
-def zoom_policy(
-    analysis: list[FaceAnalysis],
-    image_height: int,
-    threshold: float = 0.30,
-) -> dict:
-    """Decide whether to zoom toward the subject (upper-body crop).
+# Priority is face-driven: every body gets exactly one subject slot and spends it on
+# its best face (green first, then the higher score); the body order stays the detector
+# order. Body-less faces (crowds: a face but no body) each stay separate.
+_ROLE_RANK = {"main": 0, "secondary": 1, "invalid": 2}
 
-    Rule: only when the largest / closest face is big relative to the frame
-    (relative height >= threshold) -- a "near subject". Then the crop should
-    zoom to frame the subject tighter instead of keeping the whole frame.
-    This mirrors the photographer: for a big/near subject take an upper-body
-    crop (65% confidence), for a distant/small subject keep the full frame.
+
+def pick_body_subjects(analysis, roles, body_idx_of_face, bodies, w, h):
+    """Return [(fi, person_box, face_box, role)]: one entry per body won by
+    its best face; body-less faces each get their own entry."""
+    entries = []
+    slot_of_body = {}
+    slot_key = {}
+    for fi, face in enumerate(analysis):
+        role = roles.get(fi, "invalid")
+        bi = body_idx_of_face.get(fi)
+        fbox = face["bbox"]
+        if bi is not None and 0 <= bi < len(bodies):
+            pbox = bodies[bi]["bbox"]
+            key = (_ROLE_RANK.get(role, 2), -(face.get("score") or 0.0))
+            if bi in slot_of_body:
+                if key < slot_key[bi]:
+                    entries[slot_of_body[bi]] = (fi, pbox, fbox, role)
+                    slot_key[bi] = key
+            else:
+                slot_of_body[bi] = len(entries)
+                slot_key[bi] = key
+                entries.append((fi, pbox, fbox, role))
+        else:
+            entries.append((fi, person_box_for_face(fbox, w, h), fbox, role))
+    return entries
+
+
+def lost_face_boxes(analysis, roles, entries):
+    """Faces that won no body slot (two faces, one body: only the best
+    gets the entry). No detected face may be silently dropped: losers get
+    face-only protection (never half-cut) even though they drive nothing.
+    Returns [(face_box, role)].
     """
-    valid = [face for face in analysis if not face["truncated"]]
-    if not valid:
-        return {"zoom": False, "zeta": 0.0, "alpha_fidelity": 1.0,
-                "kappa_compactness": 1.0, "min_scale": 0.75}
-    lar = max(valid, key=lambda f: (f["bbox"][2] - f["bbox"][0]) * (f["bbox"][3] - f["bbox"][1]))
-    lar_h = (lar["bbox"][3] - lar["bbox"][1]) / max(1, image_height)
-    if lar_h >= threshold:
-        return {"zoom": True, "zeta": 8.0, "alpha_fidelity": 0.9,
-                "kappa_compactness": 1.25, "min_scale": 0.65}
-    return {"zoom": False, "zeta": 0.0, "alpha_fidelity": 1.0,
-            "kappa_compactness": 1.0, "min_scale": 0.75}
-
-
-def decide_subjects(
-    analysis: list[FaceAnalysis],
-    dominance_gap: float = 0.25,
-) -> dict:
-    """
-    Decide whether the scene has one dominant subject or a group.
-
-    Returns:
-        mode: "single" when one face clearly dominates, "group" otherwise,
-              "none" when there are no valid faces.
-    """
-
-    valid = [face for face in analysis if not face["truncated"]]
-    if not valid:
-        return {"mode": "none", "faces": [], "dominant": None}
-
-    ranked = sorted(valid, key=lambda face: face["score"], reverse=True)
-    dominant = ranked[0]
-    is_single = (
-        len(ranked) == 1
-        or dominant["score"] - ranked[1]["score"] >= dominance_gap
-    )
-
-    return {
-        "mode": "single" if is_single else "group",
-        "faces": ranked,
-        "dominant": dominant,
-    }
+    used = set(fi for fi, _pbox, _fbox, _role in entries)
+    return [(face["bbox"], roles.get(fi, "invalid"))
+            for fi, face in enumerate(analysis) if fi not in used]

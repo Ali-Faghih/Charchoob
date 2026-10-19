@@ -7,24 +7,26 @@ and the 4 resulting boxes are drawn as colored frames on the ORIGINAL image.
 
 Output: output/multi_ratio/<stem>_ratios.jpg
 """
-from pathlib import Path
-
 import cv2
 
 import numpy as np
 
 import config
-from bodies import pair_faces_to_bodies
+from bodies import pair_faces_to_bodies, seg_person_masks
 from debug_pose import load_pose_model, detect_pose
 from face import FaceDetector
+from frames import (
+    head_box_for,
+    owner_mask_index,
+    second_frame_for,
+)
 from persons import (
     Subject,
     classify_subjects,
     criterion_crop,
-    person_box_for_face,
-    second_frame_for,
 )
-from subjects import analyze_faces, score_faces
+from subjects import (analyze_faces, lost_face_boxes, pick_body_subjects,
+                      score_faces)
 
 # (label, aspect w/h, BGR color) — drawn largest-area first so all stay visible
 RATIOS = [
@@ -61,28 +63,31 @@ def build_subjects(pose_model, face_detector, image_src):
     roles, body_idx_of_face = classify_subjects(
         faces, bodies, pairs, analysis, w, h
     )
-    drawn_bodies = set()
-    entries = []
-    for fi, face in enumerate(analysis):
-        role = roles.get(fi, "invalid")
-        bi = body_idx_of_face.get(fi)
-        if bi is not None:
-            if bi in drawn_bodies:
-                continue
-            drawn_bodies.add(bi)
-            box = bodies[bi]["bbox"]
-        else:
-            box = person_box_for_face(face["bbox"], w, h)
-        entries.append((box, face["bbox"], role))
+    # HEAD boxes need every person's own segment: segment once, match each
+    # face to its owner mask (smallest holding its center) up front.
+    seg_masks = seg_person_masks(image)
+    fcx = [int((a["bbox"][0] + a["bbox"][2]) / 2) for a in analysis]
+    fcy = [int((a["bbox"][1] + a["bbox"][3]) / 2) for a in analysis]
+    # Face-driven priority: every body is represented by its best face
+    entries = pick_body_subjects(analysis, roles, body_idx_of_face,
+                                 bodies, w, h)
     subjects, avoid = [], []
-    for pbox, fbox, role in entries:
+    for fi, pbox, fbox, role in entries:
         if role == "main":
+            owner = owner_mask_index((fcx[fi], fcy[fi]), seg_masks)
+            hbox = head_box_for(
+                fbox, pbox,
+                seg_masks[owner] if owner is not None else None, w, h)
             subjects.append(
                 Subject(face=fbox, person=pbox,
-                        second=second_frame_for(fbox, pbox, w))
+                        second=second_frame_for(fbox, pbox, w, hbox),
+                        head=hbox, score=analysis[fi]["score"])
             )
         else:
             avoid.append({"person": pbox, "face": fbox, "role": role})
+    # slot losers stay tracked: face-only protection, drives nothing.
+    for fbox, role in lost_face_boxes(analysis, roles, entries):
+        avoid.append({"face": fbox, "face_only": True, "role": role})
     return w, h, subjects, avoid
 
 

@@ -4,14 +4,20 @@ from pathlib import Path
 import cv2
 
 import config
-from bodies import pair_faces_to_bodies
+from bodies import pair_faces_to_bodies, seg_person_masks
 from debug_pose import load_pose_model, detect_pose
 from engine import CropEngine
 from face import FaceDetector
-from geometry import Subject, person_box_for_face, second_frame_for
+from frames import (
+    head_box_for,
+    owner_mask_index,
+    second_frame_for,
+)
+from geometry import Subject
 from roles import RoleClassifier
-from subjects import analyze_faces, score_faces
-from visualize import CropVisualizer
+from subjects import (analyze_faces, lost_face_boxes, pick_body_subjects,
+                      score_faces)
+from tools.visualize import CropVisualizer
 
 
 class Pipeline:
@@ -52,34 +58,33 @@ class Pipeline:
         return image, gray, w, h, analysis, roles, body_idx_of_face, bodies
 
     def collect_subjects(self, analysis, roles, body_idx_of_face, bodies,
-                         w, h, visual=None, gray=None):
+                          w, h, visual=None, gray=None, image=None):
         """Draw once per person; split GREEN subjects vs yellow/red avoid."""
-        drawn_bodies = set()
-        entries = []
-        for fi, face in enumerate(analysis):
-            role = roles.get(fi, "invalid")
-            bi = body_idx_of_face.get(fi)
-            if bi is not None:
-                if bi in drawn_bodies:
-                    continue
-                drawn_bodies.add(bi)
-                box = bodies[bi]["bbox"]
-            else:
-                box = person_box_for_face(face["bbox"], w, h)
-            entries.append((box, face["bbox"], role))
+        seg_masks = seg_person_masks(image) if image is not None else []
+        fcx = [int((a["bbox"][0] + a["bbox"][2]) / 2) for a in analysis]
+        fcy = [int((a["bbox"][1] + a["bbox"][3]) / 2) for a in analysis]
+        # Face-driven priority: every body is represented by its best face
+        entries = pick_body_subjects(analysis, roles, body_idx_of_face,
+                                     bodies, w, h)
 
         counts = {"main": 0, "secondary": 0, "invalid": 0}
         subjects, avoid = [], []
-        for pbox, fbox, role in entries:
+        for fi, pbox, fbox, role in entries:
             counts[role] += 1
             if visual is not None:
                 visual.draw_person(pbox, role)
-            # Second Frame: person box shrunk so the face is centered
-            sbox = second_frame_for(fbox, pbox, w)
+            # HEAD box first; Second Frame centers the HEAD, not the face
+            owner = owner_mask_index((fcx[fi], fcy[fi]), seg_masks)
+            hbox = head_box_for(
+                fbox, pbox,
+                seg_masks[owner] if owner is not None else None, w, h)
+            sbox = second_frame_for(fbox, pbox, w, hbox)
             if visual is not None:
                 visual.draw_second(sbox)
             if role == "main":
-                subjects.append(Subject(face=fbox, person=pbox, second=sbox))
+                subjects.append(Subject(face=fbox, person=pbox,
+                                        second=sbox, head=hbox,
+                                        score=analysis[fi]["score"]))
                 if visual is not None and gray is not None:
                     fw = fbox[2] - fbox[0]
                     fh = fbox[3] - fbox[1]
@@ -93,6 +98,9 @@ class Pipeline:
                 # yellow/red face to stay fully inside, even though its body
                 # should stay out.
                 avoid.append({"person": pbox, "face": fbox, "role": role})
+        # slot losers stay tracked: face-only protection, drives nothing.
+        for fbox, role in lost_face_boxes(analysis, roles, entries):
+            avoid.append({"face": fbox, "face_only": True, "role": role})
         return subjects, avoid, counts
 
     def process_one(self, image_path: Path, out_path: Path):
@@ -101,7 +109,7 @@ class Pipeline:
         visual = CropVisualizer(image)
         subjects, avoid, counts = self.collect_subjects(
             analysis, roles, body_idx_of_face, bodies, w, h,
-            visual=visual, gray=gray)
+            visual=visual, gray=gray, image=image)
         # 12-criteria test crop driven by the GREEN subjects
         test_box = CropEngine(w, h, config.DEFAULT_ASPECT_RATIO,
                               subjects, avoid=avoid).run()

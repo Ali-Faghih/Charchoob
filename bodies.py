@@ -9,84 +9,16 @@ This module does NOT:
 - Select subjects.
 - Crop the image.
 """
-from pathlib import Path
-from typing import TypedDict
+import threading
 
 import cv2
+import numpy as np
 from ultralytics import YOLO
 
 import config
 
 
-class BodyDetection(TypedDict):
-    bbox: tuple[int, int, int, int]
-    confidence: float
-    truncated: bool
-
-
-class BodyDetector:
-    """Run person detection and compute per-body metadata."""
-
-    def __init__(
-        self,
-        model_path: str = None,
-        confidence: float = 0.40,
-        device: str = "cpu",
-        person_class_id: int = 0,
-    ):
-        model_path = Path(model_path or config.BODY_MODEL_PATH)
-        self.confidence = confidence
-        self.device = device
-        self.person_class_id = person_class_id
-
-        if not model_path.exists():
-            raise FileNotFoundError(f"Body model not found: {model_path}")
-        self.model = YOLO(str(model_path))
-
-    def detect(self, image_path: str) -> list[BodyDetection]:
-        """Return person boxes (person class only) in (x1, y1, x2, y2)."""
-        result = self.model.predict(
-            str(image_path),
-            conf=self.confidence,
-            device=self.device,
-            verbose=False,
-        )[0]
-        boxes = result.boxes
-        detections: list[BodyDetection] = []
-        if boxes is None or len(boxes) == 0:
-            return detections
-
-        image_h, image_w = (0, 0)  # filled below
-        image = cv2.imread(str(image_path))
-        if image is not None:
-            image_h, image_w = image.shape[:2]
-        tolerance = config.BODY_EDGE_TOLERANCE * min(image_w, image_h)
-
-        for i in range(len(boxes)):
-            if int(boxes.cls[i].item()) != self.person_class_id:
-                continue
-            x1, y1, x2, y2 = [int(v) for v in boxes.xyxy[i].tolist()]
-            # A body is "edge-cut" (and therefore its face never a subject)
-            # when it is cut on a SIDE (left/right) or TOP of the frame.
-            # A body reaching the bottom edge is normal for standing people
-            # and is NOT treated as a cut (feet at floor / frame bottom).
-            truncated = (
-                x1 <= tolerance
-                or x2 >= image_w - tolerance
-                or y1 <= tolerance
-            )
-            detections.append(
-                {
-                    "bbox": (x1, y1, x2, y2),
-                    "confidence": float(boxes.conf[i].item()),
-                    "truncated": truncated,
-                }
-            )
-        return detections
-
-
-def _area(box: tuple) -> float:
-    return max(1.0, (box[2] - box[0]) * (box[3] - box[1]))
+def _area(box: tuple) -> float:    return max(1.0, (box[2] - box[0]) * (box[3] - box[1]))
 
 
 def _intersection_area(a: tuple, b: tuple) -> float:
@@ -127,3 +59,55 @@ def pair_faces_to_bodies(
         if best_i >= 0:
             pairs.append((fi, best_i))
     return pairs
+
+
+# ------------------------------------------- body segmentation (person) ---------
+# A separate mask per person (largest connected piece of each instance) to build the
+# head box and to tell people apart in a crowd. The model is loaded once and kept.
+
+_SEG_MODEL = None
+_SEG_LOCK = threading.Lock()
+
+
+def get_seg_model():
+    """Load yolov8n-seg.pt only once and reuse it forever (thread-safe)."""
+    global _SEG_MODEL
+    if _SEG_MODEL is None:
+        with _SEG_LOCK:
+            if _SEG_MODEL is None:
+                model_path = config.SEG_MODEL_PATH
+                if not model_path.exists():
+                    raise FileNotFoundError(
+                        f"Seg model not found: {model_path}")
+                _SEG_MODEL = YOLO(str(model_path))
+    return _SEG_MODEL
+
+
+def seg_person_masks(image: np.ndarray) -> list:
+    """Per-instance body masks: a list of binary (h, w) arrays with 255=body.
+    Each mask keeps only its largest connected piece so that stray fragments (a
+    neighbour hand, for example) cannot widen the boxes. Input: raw BGR image.
+    """
+    h, w = image.shape[:2]
+    result = get_seg_model().predict(
+        image,
+        conf=config.BODY_CONFIDENCE,
+        device=config.DEVICE,
+        verbose=False,
+    )[0]
+    masks = []
+    if result.masks is None or result.boxes is None:
+        return masks
+    for i in range(len(result.boxes)):
+        if int(result.boxes.cls[i].item()) != config.PERSON_CLASS_ID:
+            continue
+        prob = cv2.resize(result.masks.data[i].cpu().numpy(), (w, h))
+        m = (prob > 0.5).astype(np.uint8) * 255
+        cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL,
+                                   cv2.CHAIN_APPROX_SIMPLE)
+        if not cnts:
+            continue
+        main = np.zeros_like(m)
+        cv2.drawContours(main, [max(cnts, key=cv2.contourArea)], -1, 255, -1)
+        masks.append(main)
+    return masks

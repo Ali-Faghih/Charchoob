@@ -1,21 +1,17 @@
-"""Editorial roles: MAIN (green) / SECONDARY (yellow) / INVALID (red).
+"""Initial priority: MAIN (green) / SECONDARY (yellow) / INVALID (red).
 
-Classification is FACE-CENTRIC because pose body boxes merge in crowds and a
-merged box touching the frame edge must NOT erase the real people inside it.
+Classification is face-driven because a pose body box gets jumbled in crowds, and
+the merged group box must not wipe out the real people inside it.
 
 Rules (in priority order):
-  1. Face box cut on the image edge          -> INVALID
-  2. Real edge-cut person (single-person body
-     box touches the frame edge)             -> INVALID, unless killing it would
-     leave fewer than MIN_SURVIVORS subjects
-     (then it is kept: small scenes stay whole).
-     A CROWD-MERGED box (>= CROWD_FACES faces
-     inside) is not a real cut -- only faces
-     that themselves hug the edge are INVALID.
-  3. Surviving subjects: main / secondary by relative face score
-       score >= MAIN_RATIO * max_score       -> MAIN
-       otherwise                             -> SECONDARY
-Faces without a matched body are still subjects (drawn as an estimated box).
+    1. A face cut by the image border -> red
+    2. A body that is genuinely a lone border-to-border crop -> red, unless removing it
+          would leave fewer than MIN_SURVIVORS subjects (a small scene stays whole).
+          A crowd-merged box (>= CROWD_FACES faces inside) is not a real crop; only a face
+          that is itself glued to the edge becomes red.
+    3. The rest by relative face score: main / secondary
+          (score >= MAIN_RATIO * top score -> green)
+A face without a matched body is still a subject (estimated box).
 """
 import config
 
