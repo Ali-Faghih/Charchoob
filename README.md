@@ -72,7 +72,7 @@ in, finished image bytes out — no temp files on disk.
 ## Project structure
 
 ```text
-imne/
+Charchoob/            # repo root (extracted ZIP may read Charchoob-master)
 ├── server.py            # FastAPI: /health, /convert, /crop, /crop/multi, /composite
 ├── service.py           # In-memory product API: crop_bytes, crop_multi, composite,
 │                        #   convert_bytes, source-matched encoder, logo/frame compositing, CLI
@@ -144,8 +144,11 @@ on the first inference call, naming the expected path.)
 
 ## Quickstart (install & run on a fresh machine)
 
+All commands are run from the **repo root** (`Charchoob` after a clone,
+`Charchoob-master` when a ZIP was extracted):
+
 ```bash
-cd imne
+cd Charchoob
 start_all.bat        # backend :8000 + frontend :8443 (Windows)
 ```
 
@@ -154,7 +157,7 @@ or manually:
 ### 1. Backend (port 8000)
 
 ```bash
-cd imne
+cd Charchoob
 python -m venv .venv
 # Windows PowerShell:
 .venv\Scripts\Activate.ps1
@@ -170,7 +173,7 @@ Health check: `GET http://localhost:8000/health` → `{"status":"ok","service":"
 ### 2. Frontend (port 8443, separate terminal)
 
 ```bash
-cd imne
+cd Charchoob
 npm install
 npm run dev        # → http://localhost:8443 (hot reload, strict port)
 ```
@@ -183,7 +186,7 @@ Open **`http://localhost:8443`** in the browser.
 `start_all.bat` handles venv activation automatically:
 
 ```bash
-cd imne
+cd Charchoob
 npm run dev:all    # starts api (:8000) + web (:8443) together, kill-all on exit
 ```
 
