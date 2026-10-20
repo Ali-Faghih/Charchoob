@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:all": "concurrently -k -n api,web \"node scripts/dev-api.mjs\" \"vite\"",
+    "api": "node scripts/dev-api.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "format": "oxfmt"
@@ -20,6 +22,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.0",
+    "concurrently": "^9.2.5",
     "oxfmt": "^0.2.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",

@@ -174,6 +174,16 @@ npm run dev        # → http://localhost:8443 (hot reload, strict port)
 
 Open **`http://localhost:8443`** in the browser.
 
+### or: backend + frontend in ONE terminal
+
+`python` must resolve to the venv one (activate step 1 first); on Windows the
+`start_all.bat` handles venv activation automatically:
+
+```bash
+cd imne
+npm run dev:all    # starts api (:8000) + web (:8443) together, kill-all on exit
+```
+
 ### 3. Production build
 
 ```bash
