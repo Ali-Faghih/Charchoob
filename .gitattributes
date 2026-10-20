@@ -3,12 +3,11 @@
 
 # ---------------------------------------------------------------------------
 # Images & Graphics
+# (jpg/png stay OUT of LFS — GitHub ZIP downloads skip LFS content, and the
+#  delivery must be complete: hero.jpg is part of the frontend.)
 # ---------------------------------------------------------------------------
-*.png                filter=lfs diff=lfs merge=lfs -text
-*.jpg                filter=lfs diff=lfs merge=lfs -text
-*.jpeg               filter=lfs diff=lfs merge=lfs -text
-*.gif                filter=lfs diff=lfs merge=lfs -text
-*.bmp                filter=lfs diff=lfs merge=lfs -text
+*.gif                 filter=lfs diff=lfs merge=lfs -text
+*.bmp                 filter=lfs diff=lfs merge=lfs -text
 *.tiff               filter=lfs diff=lfs merge=lfs -text
 *.tif                filter=lfs diff=lfs merge=lfs -text
 *.ico                filter=lfs diff=lfs merge=lfs -text
@@ -83,6 +82,8 @@
 
 # ---------------------------------------------------------------------------
 # Data & Machine Learning
+# (.pt/.pth stay OUT of LFS for the same reason — the three YOLO weights are
+#  ~20 MB total, well under GitHub's 100 MB blob limit.)
 # ---------------------------------------------------------------------------
 *.parquet            filter=lfs diff=lfs merge=lfs -text
 *.hdf5               filter=lfs diff=lfs merge=lfs -text
@@ -92,8 +93,6 @@
 *.npy                filter=lfs diff=lfs merge=lfs -text
 *.npz                filter=lfs diff=lfs merge=lfs -text
 *.bin                filter=lfs diff=lfs merge=lfs -text
-*.pt                 filter=lfs diff=lfs merge=lfs -text
-*.pth                filter=lfs diff=lfs merge=lfs -text
 *.onnx               filter=lfs diff=lfs merge=lfs -text
 *.pb                 filter=lfs diff=lfs merge=lfs -text
 *.safetensors        filter=lfs diff=lfs merge=lfs -text
