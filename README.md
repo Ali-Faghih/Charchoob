@@ -129,13 +129,16 @@ the product runs.
 | npm | 9+ | frontend |
 | OS | Windows / Linux / macOS | developed on Windows; paths are portable |
 
-Model weights must exist in `models/`:
+Model weights must exist in `models/` (all three are committed directly,
+~20 MB total — clone/ZIP includes them):
 
 - `models/yolov8n-face.pt` — face detection
 - `models/yolov8n-pose.pt` — bodies + keypoints
 - `models/yolov8n-seg.pt` — person masks
 
-(Person boxes come from the pose model; no plain-detector weight is needed.)
+(Person boxes come from the pose model; no plain-detector weight is needed.
+Filenames must match exactly; a missing weight raises `FileNotFoundError`
+on the first inference call, naming the expected path.)
 
 ---
 
@@ -436,8 +439,8 @@ report-figure scripts live in `اضافات/report_tools/`.)
 - Set `VITE_API_BASE_URL` at frontend **build** time to the public API origin.
 - Tighten `CORSMiddleware.allow_origins` before exposing the API publicly
   (currently `["*"]` for local development).
-- Weights (`models/*.pt`) must be present on the inference host; keep them out
-  of git or use Git LFS.
+- Weights (`models/*.pt`) and frontend media are tracked as plain git files,
+  deliberately outside Git LFS so that GitHub ZIP downloads contain real files.
 - No auth / rate limiting yet — add before any public exposure.
 
 Example (Nginx sketch): `/api/* → 127.0.0.1:8000`, `/ → dist/`.
