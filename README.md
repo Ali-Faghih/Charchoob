@@ -144,6 +144,12 @@ on the first inference call, naming the expected path.)
 
 ## Quickstart (install & run on a fresh machine)
 
+First, clone the repo:
+
+```bash
+git clone https://github.com/Ali-Faghih/Charchoob.git
+```
+
 All commands are run from the **repo root** (`Charchoob` after a clone,
 `Charchoob-master` when a ZIP was extracted):
 
